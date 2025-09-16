@@ -7,6 +7,7 @@ from sklearn.metrics import accuracy_score
 from math import log2
 
 
+# ================== Load Data ==================
 def load_data(fake_file="clean_fake.txt", real_file="clean_real.txt"):
     with open(fake_file, "r", encoding="utf-8") as f:
         fake_lines = f.readlines()
@@ -28,7 +29,7 @@ def load_data(fake_file="clean_fake.txt", real_file="clean_real.txt"):
     return X_train, X_val, X_test, y_train, y_val, y_test, vectorizer
 
 
-# Ý a: in thông số dataset và kết quả cây quyết định cơ bản
+# ================== Ý a ==================
 def dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectorizer):
     total = X_train.shape[0] + X_val.shape[0] + X_test.shape[0]
     print(f"Total examples: {total}")
@@ -63,7 +64,7 @@ def dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectori
     print(f"Test accuracy: {acc_test:.3f}")
 
 
-# Ý b: chọn mô hình
+# ================== Ý b ==================
 def select_model(X_train, y_train, X_val, y_val, X_test, y_test):
     criteria = ["gini", "entropy", "log_loss"]
     max_depths = [2, 4, 6, 8, 10]
@@ -103,11 +104,11 @@ def select_model(X_train, y_train, X_val, y_val, X_test, y_test):
     clf_best.fit(np.vstack([X_train.toarray(), X_val.toarray()]), y_train + y_val)
     y_test_pred = clf_best.predict(X_test)
     test_acc = accuracy_score(y_test, y_test_pred)
-    print(f"Best model: criterion={best_crit}, max_depth={best_depth}, val_acc={best_acc:.4f}, test_acc={test_acc:.4f}")
+    print(f"\nBest model: criterion={best_crit}, max_depth={best_depth}, val_acc={best_acc:.4f}, test_acc={test_acc:.4f}")
     return clf_best, best_crit, best_depth
 
 
-# Ý c: vẽ 2 tầng đầu của cây
+# ================== Ý c ==================
 def visualize_tree(clf, vectorizer):
     feature_names = vectorizer.get_feature_names_out()
     plt.figure(figsize=(12, 6))
@@ -122,7 +123,7 @@ def visualize_tree(clf, vectorizer):
     plt.show()
 
 
-# Ý d: hàm IG
+# ================== Ý d ==================
 def entropy(labels):
     total = len(labels)
     if total == 0:
@@ -132,29 +133,73 @@ def entropy(labels):
     return -sum(p * log2(p) for p in probs if p > 0)
 
 
-def compute_information_gain(X_train, y_train, vectorizer, keyword):
-    if keyword not in vectorizer.vocabulary_:
-        print(f"Keyword '{keyword}' not in vocabulary.")
-        return None
-    idx = vectorizer.vocabulary_[keyword]
-    has_kw = X_train[:, idx].toarray().ravel() > 0
-    left = [y_train[i] for i in range(len(y_train)) if has_kw[i]]
-    right = [y_train[i] for i in range(len(y_train)) if not has_kw[i]]
+def compute_information_gain_all(X_train, y_train, vectorizer, clf, top_k=5, keywords=None):
+    feature_names = vectorizer.get_feature_names_out()
+    IG_scores = {}
 
-    H_parent = entropy(y_train)
-    H_left = entropy(left)
-    H_right = entropy(right)
+    # Tính IG cho tất cả features
+    for word, idx in vectorizer.vocabulary_.items():
+        has_kw = X_train[:, idx].toarray().ravel() > 0
+        left = [y_train[i] for i in range(len(y_train)) if has_kw[i]]
+        right = [y_train[i] for i in range(len(y_train)) if not has_kw[i]]
 
-    IG = H_parent - (len(left) / len(y_train)) * H_left - (len(right) / len(y_train)) * H_right
-    print(f"Information gain for keyword '{keyword}': {IG:.4f}")
-    return IG
+        H_parent = entropy(y_train)
+        H_left = entropy(left)
+        H_right = entropy(right)
+
+        IG = H_parent - (len(left)/len(y_train))*H_left - (len(right)/len(y_train))*H_right
+        IG_scores[word] = IG
+
+    # Lấy top k theo IG
+    top_features = sorted(IG_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+
+    print(" Information Gain Analysis:")
+    print("="*50)
+    for rank, (word, ig) in enumerate(top_features, 1):
+        idx = np.where(feature_names == word)[0][0]
+        importance = clf.feature_importances_[idx]
+        print(f"Top feature {rank}: '{word}'")
+        print(f"  Information Gain: {ig:.6f}")
+        print(f"  Feature Importance: {importance:.6f}\n")
+
+    # In top split feature của cây (root node)
+    root_idx = clf.tree_.feature[0]
+    if root_idx >= 0:
+        root_feature = feature_names[root_idx]
+        print(f"\nTop split feature (root node): '{root_feature}'\n")
+
+    # In IG cho các từ khóa cụ thể
+    if keywords:
+        print("Information Gain for specific keywords:")
+        print("="*50)
+        for kw in keywords:
+            if kw in vectorizer.vocabulary_:
+                ig = IG_scores[kw]
+                idx = vectorizer.vocabulary_[kw]
+                importance = clf.feature_importances_[idx]
+                print(f"Keyword: '{kw}'")
+                print(f"  Information Gain: {ig:.6f}")
+                print(f"  Feature Importance: {importance:.6f}\n")
+            else:
+                print(f"Keyword: '{kw}' not in vocabulary.\n")
 
 
-# ========== Main ==========
+# ================== Main ==================
 if __name__ == "__main__":
     X_train, X_val, X_test, y_train, y_val, y_test, vectorizer = load_data()
-    dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectorizer)  # Ý a
-    clf_best, best_crit, best_depth = select_model(X_train, y_train, X_val, y_val, X_test, y_test)  # Ý b
-    visualize_tree(clf_best, vectorizer)  # Ý c
-    for kw in ["trump", "hillary", "russia", "america"]:  # Ý d
-        compute_information_gain(X_train, y_train, vectorizer, kw)
+
+    # Ý a
+    dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectorizer)
+
+    # Ý b
+    clf_best, best_crit, best_depth = select_model(X_train, y_train, X_val, y_val, X_test, y_test)
+
+    # Ý c
+    visualize_tree(clf_best, vectorizer)
+
+    # Ý d
+    compute_information_gain_all(
+        X_train, y_train, vectorizer, clf_best,
+        top_k=5,
+        keywords=["trump", "news", "media", "fake", "real"]
+    )
