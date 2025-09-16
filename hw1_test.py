@@ -28,56 +28,42 @@ def load_data(fake_file="clean_fake.txt", real_file="clean_real.txt"):
     return X_train, X_val, X_test, y_train, y_val, y_test, vectorizer
 
 
-def hyperparameter_analysis(X_train, y_train, X_val, y_val):
-    # max_depth
-    depths = [5, 10, 15, 20]
-    accs_depth = []
-    for d in depths:
-        clf = DecisionTreeClassifier(max_depth=d, random_state=42)
-        clf.fit(X_train, y_train)
-        y_pred = clf.predict(X_val)
-        accs_depth.append(accuracy_score(y_val, y_pred))
+# Ý a: in thông số dataset và kết quả cây quyết định cơ bản
+def dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectorizer):
+    total = X_train.shape[0] + X_val.shape[0] + X_test.shape[0]
+    print(f"Total examples: {total}")
+    print(f"Training set: {X_train.shape[0]} examples ({100*X_train.shape[0]/total:.1f}%)")
+    print(f"Validation set: {X_val.shape[0]} examples ({100*X_val.shape[0]/total:.1f}%)")
+    print(f"Test set: {X_test.shape[0]} examples ({100*X_test.shape[0]/total:.1f}%)")
+    print(f"Number of features: {X_train.shape[1]}")
 
-    # min_samples_split
-    splits = [2, 5, 10]
-    accs_split = []
-    for s in splits:
-        clf = DecisionTreeClassifier(min_samples_split=s, random_state=42)
-        clf.fit(X_train, y_train)
-        y_pred = clf.predict(X_val)
-        accs_split.append(accuracy_score(y_val, y_pred))
+    def count_classes(y):
+        fake = sum(1 for i in y if i == 0)
+        real = sum(1 for i in y if i == 1)
+        return fake, real
 
-    # min_samples_leaf
-    leafs = [1, 5, 10]
-    accs_leaf = []
-    for l in leafs:
-        clf = DecisionTreeClassifier(min_samples_leaf=l, random_state=42)
-        clf.fit(X_train, y_train)
-        y_pred = clf.predict(X_val)
-        accs_leaf.append(accuracy_score(y_val, y_pred))
+    tr_fake, tr_real = count_classes(y_train)
+    val_fake, val_real = count_classes(y_val)
+    te_fake, te_real = count_classes(y_test)
 
-    # Vẽ 3 biểu đồ cột
-    fig, axs = plt.subplots(1, 3, figsize=(15, 4))
+    print(f"\nTraining set - Fake: {tr_fake}, Real: {tr_real}")
+    print(f"Validation set - Fake: {val_fake}, Real: {val_real}")
+    print(f"Test set - Fake: {te_fake}, Real: {te_real}")
 
-    axs[0].bar(depths, accs_depth)
-    axs[0].set_title("Max Depth vs Accuracy")
-    axs[0].set_xlabel("Max Depth")
-    axs[0].set_ylabel("Validation Accuracy")
+    # Baseline Decision Tree
+    clf = DecisionTreeClassifier(random_state=42)
+    clf.fit(X_train, y_train)
+    acc_train = accuracy_score(y_train, clf.predict(X_train))
+    acc_val = accuracy_score(y_val, clf.predict(X_val))
+    acc_test = accuracy_score(y_test, clf.predict(X_test))
 
-    axs[1].bar(splits, accs_split)
-    axs[1].set_title("Min Samples Split vs Accuracy")
-    axs[1].set_xlabel("Min Samples Split")
-    axs[1].set_ylabel("Validation Accuracy")
-
-    axs[2].bar(leafs, accs_leaf)
-    axs[2].set_title("Min Samples Leaf vs Accuracy")
-    axs[2].set_xlabel("Min Samples Leaf")
-    axs[2].set_ylabel("Validation Accuracy")
-
-    plt.tight_layout()
-    plt.show()
+    print("\nBasic Decision Tree Results:")
+    print(f"Training accuracy: {acc_train:.3f}")
+    print(f"Validation accuracy: {acc_val:.3f}")
+    print(f"Test accuracy: {acc_test:.3f}")
 
 
+# Ý b: chọn mô hình
 def select_model(X_train, y_train, X_val, y_val, X_test, y_test):
     criteria = ["gini", "entropy", "log_loss"]
     max_depths = [2, 4, 6, 8, 10]
@@ -94,9 +80,9 @@ def select_model(X_train, y_train, X_val, y_val, X_test, y_test):
             print(f"Criterion={crit}, max_depth={d}, val_acc={acc:.4f}")
         results[crit] = accs
 
-    plt.figure(figsize=(8,6))
+    plt.figure(figsize=(8, 6))
     for crit in criteria:
-        plt.plot(max_depths, results[crit], marker='o', label=crit)
+        plt.plot(max_depths, results[crit], marker="o", label=crit)
     plt.xlabel("max_depth")
     plt.ylabel("Validation Accuracy")
     plt.title("Validation Accuracy vs max_depth")
@@ -121,16 +107,22 @@ def select_model(X_train, y_train, X_val, y_val, X_test, y_test):
     return clf_best, best_crit, best_depth
 
 
-
+# Ý c: vẽ 2 tầng đầu của cây
 def visualize_tree(clf, vectorizer):
     feature_names = vectorizer.get_feature_names_out()
-    plt.figure(figsize=(12,6))
-    plot_tree(clf, feature_names=feature_names, class_names=["Fake","Real"],
-              filled=True, max_depth=2)
+    plt.figure(figsize=(12, 6))
+    plot_tree(
+        clf,
+        feature_names=feature_names,
+        class_names=["Fake", "Real"],
+        filled=True,
+        max_depth=2,
+    )
     plt.title("First Two Layers of Decision Tree")
     plt.show()
 
 
+# Ý d: hàm IG
 def entropy(labels):
     total = len(labels)
     if total == 0:
@@ -138,6 +130,7 @@ def entropy(labels):
     counts = np.bincount(labels)
     probs = counts / total
     return -sum(p * log2(p) for p in probs if p > 0)
+
 
 def compute_information_gain(X_train, y_train, vectorizer, keyword):
     if keyword not in vectorizer.vocabulary_:
@@ -152,7 +145,7 @@ def compute_information_gain(X_train, y_train, vectorizer, keyword):
     H_left = entropy(left)
     H_right = entropy(right)
 
-    IG = H_parent - (len(left)/len(y_train))*H_left - (len(right)/len(y_train))*H_right
+    IG = H_parent - (len(left) / len(y_train)) * H_left - (len(right) / len(y_train)) * H_right
     print(f"Information gain for keyword '{keyword}': {IG:.4f}")
     return IG
 
@@ -160,8 +153,8 @@ def compute_information_gain(X_train, y_train, vectorizer, keyword):
 # ========== Main ==========
 if __name__ == "__main__":
     X_train, X_val, X_test, y_train, y_val, y_test, vectorizer = load_data()
-    hyperparameter_analysis(X_train, y_train, X_val, y_val)   # Ý a
+    dataset_and_baseline(X_train, X_val, X_test, y_train, y_val, y_test, vectorizer)  # Ý a
     clf_best, best_crit, best_depth = select_model(X_train, y_train, X_val, y_val, X_test, y_test)  # Ý b
-    visualize_tree(clf_best, vectorizer)   # Ý c
-    for kw in ["trump", "hillary", "russia", "america"]:      # Ý d
+    visualize_tree(clf_best, vectorizer)  # Ý c
+    for kw in ["trump", "hillary", "russia", "america"]:  # Ý d
         compute_information_gain(X_train, y_train, vectorizer, kw)
